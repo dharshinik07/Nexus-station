@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { FolderLock, Shield, ArrowRight, Loader2, KeyRound } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -123,13 +123,6 @@ export const LoginPage: React.FC = () => {
             )}
           </button>
         </form>
-
-        <div className="text-center text-sm text-slate-500 dark:text-slate-400">
-          Don't have an account?{' '}
-          <Link to="/register" className="font-semibold text-brand-600 dark:text-brand-400 hover:underline">
-            Register here
-          </Link>
-        </div>
 
         {/* Security badge footer */}
         <div className="flex items-center justify-center gap-2 pt-2 text-xs text-slate-400 border-t border-slate-100 dark:border-slate-800">

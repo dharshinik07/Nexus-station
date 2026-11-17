@@ -25,6 +25,36 @@ async function main() {
 
   console.log(`Created/Verified demo user: ${demoUser.email}`);
 
+  // 1b. Create Second Private Operator Account
+  const secondUser = await prisma.user.upsert({
+    where: { email: 'partner@nexus.local' },
+    update: {},
+    create: {
+      email: 'partner@nexus.local',
+      fullName: 'Nexus Partner',
+      passwordHash,
+      isEmailVerified: true,
+      role: 'OWNER',
+    },
+  });
+
+  await prisma.setting.upsert({
+    where: { userId: secondUser.id },
+    update: {},
+    create: {
+      userId: secondUser.id,
+      businessName: 'Nexus Partner Workspace',
+      email: 'partner@nexus.local',
+      currency: 'USD',
+      invoicePrefix: 'NEX-',
+      nextInvoiceNumber: 1001,
+      taxType: 'GST',
+      defaultTaxRate: 10,
+    },
+  });
+
+  console.log(`Created/Verified second user: ${secondUser.email}`);
+
   // 2. Settings
   await prisma.setting.upsert({
     where: { userId: demoUser.id },
@@ -134,78 +164,83 @@ async function main() {
   });
 
   // 6. Invoices & Items
-  const invoice1 = await prisma.invoice.create({
-    data: {
-      userId: demoUser.id,
-      clientId: acmeClient.id,
-      projectId: cloudProject.id,
-      invoiceNumber: 'INV-1001',
-      issueDate: new Date('2026-01-20'),
-      dueDate: new Date('2026-02-05'),
-      status: 'PAID',
-      subtotal: 5000,
-      taxRate: 10,
-      taxAmount: 500,
-      total: 5500,
-      amountPaid: 5500,
-      notes: 'Phase 1 Architecture milestone.',
-      items: {
-        create: [
-          { description: 'Architecture & Cloud Migration Planning', quantity: 1, unitPrice: 3500, total: 3500 },
-          { description: 'DevOps CI/CD setup', quantity: 1, unitPrice: 1500, total: 1500 },
-        ],
+  const existingInv1 = await prisma.invoice.findFirst({
+    where: { userId: demoUser.id, invoiceNumber: 'INV-1001' },
+  });
+
+  if (!existingInv1) {
+    const invoice1 = await prisma.invoice.create({
+      data: {
+        userId: demoUser.id,
+        clientId: acmeClient.id,
+        projectId: cloudProject.id,
+        invoiceNumber: 'INV-1001',
+        issueDate: new Date('2026-01-20'),
+        dueDate: new Date('2026-02-05'),
+        status: 'PAID',
+        subtotal: 5000,
+        taxRate: 10,
+        taxAmount: 500,
+        total: 5500,
+        amountPaid: 5500,
+        notes: 'Phase 1 Architecture milestone.',
+        items: {
+          create: [
+            { description: 'Architecture & Cloud Migration Planning', quantity: 1, unitPrice: 3500, total: 3500 },
+            { description: 'DevOps CI/CD setup', quantity: 1, unitPrice: 1500, total: 1500 },
+          ],
+        },
       },
-    },
-  });
+    });
 
-  // Payment for invoice1
-  await prisma.payment.create({
-    data: {
-      userId: demoUser.id,
-      invoiceId: invoice1.id,
-      amount: 5500,
-      paymentDate: new Date('2026-02-02'),
-      paymentMethod: 'BANK_TRANSFER',
-      reference: 'WIRE-9928172',
-      notes: 'Paid in full on time.',
-    },
-  });
-
-  const invoice2 = await prisma.invoice.create({
-    data: {
-      userId: demoUser.id,
-      clientId: novaClient.id,
-      projectId: mobileProject.id,
-      invoiceNumber: 'INV-1002',
-      issueDate: new Date('2026-02-15'),
-      dueDate: new Date('2026-03-01'),
-      status: 'SENT',
-      subtotal: 3800,
-      taxRate: 10,
-      taxAmount: 380,
-      total: 4180,
-      amountPaid: 1000,
-      notes: 'Initial UX wireframes and user testing round 1.',
-      items: {
-        create: [
-          { description: 'Design System & Figma Tokens', quantity: 20, unitPrice: 95, total: 1900 },
-          { description: 'Mobile Prototype & Usability Testing', quantity: 20, unitPrice: 95, total: 1900 },
-        ],
+    await prisma.payment.create({
+      data: {
+        userId: demoUser.id,
+        invoiceId: invoice1.id,
+        amount: 5500,
+        paymentDate: new Date('2026-02-02'),
+        paymentMethod: 'BANK_TRANSFER',
+        reference: 'WIRE-9928172',
+        notes: 'Paid in full on time.',
       },
-    },
-  });
+    });
 
-  await prisma.payment.create({
-    data: {
-      userId: demoUser.id,
-      invoiceId: invoice2.id,
-      amount: 1000,
-      paymentDate: new Date('2026-02-25'),
-      paymentMethod: 'STRIPE',
-      reference: 'ch_3N8x7728',
-      notes: 'Initial deposit received.',
-    },
-  });
+    const invoice2 = await prisma.invoice.create({
+      data: {
+        userId: demoUser.id,
+        clientId: novaClient.id,
+        projectId: mobileProject.id,
+        invoiceNumber: 'INV-1002',
+        issueDate: new Date('2026-02-15'),
+        dueDate: new Date('2026-03-01'),
+        status: 'SENT',
+        subtotal: 3800,
+        taxRate: 10,
+        taxAmount: 380,
+        total: 4180,
+        amountPaid: 1000,
+        notes: 'Initial UX wireframes and user testing round 1.',
+        items: {
+          create: [
+            { description: 'Design System & Figma Tokens', quantity: 20, unitPrice: 95, total: 1900 },
+            { description: 'Mobile Prototype & Usability Testing', quantity: 20, unitPrice: 95, total: 1900 },
+          ],
+        },
+      },
+    });
+
+    await prisma.payment.create({
+      data: {
+        userId: demoUser.id,
+        invoiceId: invoice2.id,
+        amount: 1000,
+        paymentDate: new Date('2026-02-25'),
+        paymentMethod: 'STRIPE',
+        reference: 'ch_3N8x7728',
+        notes: 'Initial deposit received.',
+      },
+    });
+  }
 
   // 7. Expenses
   await prisma.expense.createMany({

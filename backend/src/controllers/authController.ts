@@ -45,91 +45,11 @@ function generateTokens(user: { id: string; email: string; sessionVersion: numbe
 }
 
 export async function register(req: Request, res: Response): Promise<void> {
-  try {
-    const { email, password, fullName } = req.body;
-
-    const existingUser = await prisma.user.findFirst({
-      where: { email: email.toLowerCase() },
-    });
-
-    if (existingUser) {
-      res.status(409).json({ success: false, error: 'User with this email already exists' });
-      return;
-    }
-
-    const passwordHash = await hashPassword(password);
-    const verificationToken = generateRandomToken(24);
-
-    const user = await prisma.user.create({
-      data: {
-        email: email.toLowerCase(),
-        passwordHash,
-        fullName,
-        verificationToken,
-        isEmailVerified: true, // Auto-verified for local/production setup
-        setting: {
-          create: {
-            businessName: `${fullName}'s Studio`,
-            currency: 'USD',
-            invoicePrefix: 'INV-',
-            nextInvoiceNumber: 1001,
-            taxType: 'GST',
-            defaultTaxRate: 10,
-          },
-        },
-      },
-    });
-
-    // Seed default expense categories for the user
-    await prisma.expenseCategory.createMany({
-      data: DEFAULT_EXPENSE_CATEGORIES.map((cat) => ({
-        userId: user.id,
-        name: cat.name,
-        color: cat.color,
-        isSystem: true,
-      })),
-    });
-
-    await logAudit({
-      userId: user.id,
-      action: 'CREATE',
-      entity: 'USER',
-      entityId: user.id,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      metadata: { email: user.email, fullName: user.fullName },
-    });
-
-    const { accessToken, refreshToken } = generateTokens({
-      id: user.id,
-      email: user.email,
-      sessionVersion: user.currentSessionVersion,
-    });
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: ENV.COOKIE_SECURE,
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          fullName: user.fullName,
-          role: user.role,
-          twoFactorEnabled: user.twoFactorEnabled,
-        },
-        accessToken,
-      },
-    });
-  } catch (error: any) {
-    console.error('Registration error:', error);
-    res.status(500).json({ success: false, error: 'Internal server error during registration' });
-  }
+  // Public sign-ups are disabled for private instance security
+  res.status(403).json({
+    success: false,
+    error: 'Public registration is disabled on this private instance.',
+  });
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
