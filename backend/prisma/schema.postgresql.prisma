@@ -1,0 +1,401 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String         @id @default(cuid())
+  email                 String         @unique
+  passwordHash          String
+  fullName              String
+  role                  String         @default("OWNER")
+  isEmailVerified       Boolean        @default(false)
+  verificationToken     String?
+  resetPasswordToken    String?
+  resetPasswordExpires  DateTime?
+  twoFactorSecret       String?
+  twoFactorEnabled      Boolean        @default(false)
+  currentSessionVersion Int            @default(1)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  deletedAt             DateTime?
+
+  teamsOwned            Team[]         @relation("TeamOwner")
+  teamMemberships       TeamMember[]
+  clients               Client[]
+  projects              Project[]
+  timeEntries           TimeEntry[]
+  invoices              Invoice[]
+  payments              Payment[]
+  expenses              Expense[]
+  categories            ExpenseCategory[]
+  documents             Document[]
+  reminders             Reminder[]
+  auditLogs             AuditLog[]
+  setting               Setting?
+
+  @@index([email])
+  @@index([deletedAt])
+}
+
+model Team {
+  id          String        @id @default(cuid())
+  name        String
+  ownerId     String
+  owner       User          @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  members     TeamMember[]
+  clients     Client[]
+  projects    Project[]
+  timeEntries TimeEntry[]
+  invoices    Invoice[]
+  payments    Payment[]
+  expenses    Expense[]
+  documents   Document[]
+  reminders   Reminder[]
+  auditLogs   AuditLog[]
+
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+model TeamMember {
+  id        String    @id @default(cuid())
+  teamId    String
+  team      Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String    @default("VIEWER") // OWNER, EDITOR, VIEWER
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@index([teamId])
+}
+
+model Client {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  team        Team?       @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  name        String
+  company     String?
+  email       String?
+  phone       String?
+  address     String?
+  taxId       String?     // AES-256 encrypted
+  notes       String?
+  tags        String?     // Comma-separated
+  status      String      @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  projects    Project[]
+  invoices    Invoice[]
+  expenses    Expense[]
+  documents   Document[]
+
+  @@index([userId])
+  @@index([teamId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model Project {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  team        Team?       @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      String      @default("IN_PROGRESS") // NOT_STARTED, IN_PROGRESS, COMPLETED, ON_HOLD, CANCELLED
+  billingType String      @default("FIXED")       // HOURLY, FIXED
+  rate        Float       @default(0)
+  budget      Float?
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  timeEntries TimeEntry[]
+  invoices    Invoice[]
+  expenses    Expense[]
+  documents   Document[]
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model TimeEntry {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId          String?
+  team            Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  projectId       String
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  description     String?
+  startTime       DateTime
+  endTime         DateTime?
+  durationMinutes Int       @default(0)
+  isBillable      Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([deletedAt])
+}
+
+model Invoice {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId            String?
+  team              Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  clientId          String
+  client            Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  invoiceNumber     String
+  issueDate         DateTime
+  dueDate           DateTime
+  status            String        @default("DRAFT") // DRAFT, SENT, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED
+  currency          String        @default("USD")
+  discountAmount    Float         @default(0)
+  discountType      String        @default("FIXED") // FIXED, PERCENTAGE
+  taxRate           Float         @default(0)
+  taxAmount         Float         @default(0)
+  subtotal          Float         @default(0)
+  total             Float         @default(0)
+  amountPaid        Float         @default(0)
+  notes             String?
+  terms             String?
+  isRecurring       Boolean       @default(false)
+  recurringInterval String?       // MONTHLY, QUARTERLY, YEARLY
+  nextInvoiceDate   DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+
+  items             InvoiceItem[]
+  payments          Payment[]
+
+  @@unique([userId, invoiceNumber])
+  @@index([userId])
+  @@index([clientId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([deletedAt])
+}
+
+model InvoiceItem {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float     @default(1)
+  unitPrice   Float     @default(0)
+  total       Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([invoiceId])
+  @@index([deletedAt])
+}
+
+model Payment {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId        String?
+  team          Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  invoiceId     String
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentDate   DateTime  @default(now())
+  paymentMethod String    @default("BANK_TRANSFER") // BANK_TRANSFER, CREDIT_CARD, PAYPAL, STRIPE, CASH, OTHER
+  reference     String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  @@index([userId])
+  @@index([invoiceId])
+  @@index([deletedAt])
+}
+
+model ExpenseCategory {
+  id        String    @id @default(cuid())
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  color     String    @default("#64748b")
+  isSystem  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  expenses  Expense[]
+
+  @@index([userId])
+  @@index([deletedAt])
+}
+
+model Expense {
+  id                   String           @id @default(cuid())
+  userId               String
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId               String?
+  team                 Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  categoryId           String?
+  category             ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryName         String           @default("Other")
+  vendor               String
+  description          String?
+  amount               Float
+  currency             String           @default("USD")
+  expenseDate          DateTime
+  paymentMethod        String           @default("CARD")
+  clientId             String?
+  client               Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  projectId            String?
+  project              Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  isBillable           Boolean          @default(false)
+  isTaxDeductible      Boolean          @default(true)
+  tags                 String?
+  receiptFilename      String?
+  receiptOriginalName  String?
+  receiptMimeType      String?
+  receiptSize          Int?
+  isRecurring          Boolean          @default(false)
+  recurringFrequency   String?          // MONTHLY, YEARLY
+  nextRenewalDate      DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  deletedAt            DateTime?
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([expenseDate])
+  @@index([deletedAt])
+}
+
+model Document {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId           String?
+  team             Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  clientId         String?
+  client           Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  projectId        String?
+  project          Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  title            String
+  docType          String    @default("OTHER") // CONTRACT, NDA, PROPOSAL, TAX, ID_VERIFICATION, RECEIPT, OTHER
+  storedFilename   String
+  originalFilename String
+  mimeType         String
+  fileSize         Int
+  tags             String?
+  expiresAt        DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([expiresAt])
+  @@index([deletedAt])
+}
+
+model Reminder {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId         String?
+  team           Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  title          String
+  reminderType   String    // INVOICE_DUE, TAX_DEADLINE, RECURRING_BILL, CONTRACT_EXPIRY, CUSTOM
+  dueDate        DateTime
+  isCompleted    Boolean   @default(false)
+  linkedEntityId String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@index([userId])
+  @@index([dueDate])
+  @@index([isCompleted])
+  @@index([deletedAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  teamId    String?
+  team      Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  action    String   // LOGIN, LOGOUT, CREATE, UPDATE, DELETE, EXPORT, RESTORE
+  entity    String   // USER, CLIENT, INVOICE, EXPENSE, DOCUMENT, SETTING, BACKUP
+  entityId  String?
+  ipAddress String?
+  userAgent String?
+  metadata  String?  // JSON string
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model Setting {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId               String?
+  businessName         String?
+  logoUrl              String?
+  email                String?
+  phone                String?
+  address              String?
+  taxIdEncrypted       String?   // AES-256 encrypted
+  bankDetailsEncrypted String?   // AES-256 encrypted
+  currency             String    @default("USD")
+  dateFormat           String    @default("YYYY-MM-DD")
+  invoicePrefix        String    @default("INV-")
+  nextInvoiceNumber    Int       @default(1001)
+  taxType              String    @default("GST") // GST, VAT, SALES_TAX, NONE
+  defaultTaxRate       Float     @default(0)
+  reminderDaysBefore   Int       @default(3)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+
+  @@index([userId])
+}
